@@ -1,0 +1,20 @@
+# Build output
+src/Umbraco.AI.Testsite/bin/
+src/Umbraco.AI.Testsite/obj/
+src/.vs/
+
+# Umbraco
+src/Umbraco.AI.Testsite/umbraco/Data/*.sqlite.db
+src/Umbraco.AI.Testsite/umbraco/Data/*.sqlite.db-shm
+src/Umbraco.AI.Testsite/umbraco/Data/*.sqlite.db-wal
+src/Umbraco.AI.Testsite/umbraco/Data/TEMP/
+src/Umbraco.AI.Testsite/umbraco/Logs/
+src/Umbraco.AI.Testsite/wwwroot/media/
+appsettings-schema.json
+appsettings-schema.*.json
+
+# Local dev config (contains connection string + unattended install credentials)
+src/Umbraco.AI.Testsite/appsettings.Development.json
+
+# macOS
+.DS_Store
