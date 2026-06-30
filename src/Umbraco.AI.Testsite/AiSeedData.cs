@@ -45,7 +45,7 @@ public sealed class AiSeedDataHandler(
     ILogger<AiSeedDataHandler> logger)
     : INotificationAsyncHandler<UmbracoApplicationStartedNotification>
 {
-    private const string ConnectionAlias = "gemini-testsite";
+    private const string ConnectionAlias = "openai-testsite";
 
     public async Task HandleAsync(UmbracoApplicationStartedNotification notification, CancellationToken ct)
     {
@@ -111,12 +111,13 @@ public sealed class AiSeedDataHandler(
         var connection = await connectionService.SaveConnectionAsync(new AIConnection
         {
             Alias = ConnectionAlias,
-            Name = "Google Gemini (Test)",
+            Name = "OpenAI (Test)",
             ProviderId = "openai",
             Settings = new OpenAIProviderSettings
             {
-                ApiKey = "$LimboAiTestsite:Gemini:ApiKey",
-                Endpoint = "https://generativelanguage.googleapis.com/v1beta/openai/",
+                // $ prefix: Umbraco.AI resolves the value from IConfiguration at runtime.
+                // Set the key with: dotnet user-secrets set "LimboAiTestsite:OpenAI:ApiKey" "YOUR-KEY"
+                ApiKey = "$LimboAiTestsite:OpenAI:ApiKey",
             },
             IsActive = true
         }, ct);
@@ -151,7 +152,7 @@ public sealed class AiSeedDataHandler(
             Name = "Test Site Chat",
             Capability = AICapability.Chat,
             ConnectionId = connection.Id,
-            Model = new AIModelRef("openai", "gemini-2.5-flash"),
+            Model = new AIModelRef("openai", "gpt-4o-mini"),
             Settings = new AIChatProfileSettings
             {
                 Temperature = 0.4f,
@@ -183,7 +184,10 @@ public sealed class AiSeedDataHandler(
             ProfileId = profile.Id,
             IsActive = true,
             IncludeEntityContext = false,
-            Scope = new AIPromptScope()
+            Scope = new AIPromptScope
+            {
+                AllowRules = [new AIPromptScopeRule { PropertyEditorUiAliases = allTextEditors }]
+            }
         }, ct);
 
         await promptService.SavePromptAsync(new AIPrompt
@@ -197,7 +201,10 @@ public sealed class AiSeedDataHandler(
             ProfileId = profile.Id,
             IsActive = true,
             IncludeEntityContext = false,
-            Scope = new AIPromptScope()
+            Scope = new AIPromptScope
+            {
+                AllowRules = [new AIPromptScopeRule { PropertyEditorUiAliases = allTextEditors }]
+            }
         }, ct);
 
         // ── Agent ─────────────────────────────────────────────────────────────
