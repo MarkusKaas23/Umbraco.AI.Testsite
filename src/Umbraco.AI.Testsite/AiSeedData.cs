@@ -212,17 +212,20 @@ public sealed class AiSeedDataHandler(
             IncludeEntityContext = true,
             Scope = new AIPromptScope
             {
-                // Restricted to the altText TextBox on Image media items only.
-                // ContentTypeAliases pins it to the Umbraco Image media type;
-                // PropertyAliases pins it to the specific alt text field.
-                // Verify PropertyAliases matches the alias set in
-                // Settings → Media Types → Image (typically "altText").
+                // Two rules: Umbraco's built-in Image media type (altText)
+                // and the testArticle content type (imageAlt).
                 AllowRules =
                 [
                     new AIPromptScopeRule
                     {
                         ContentTypeAliases      = ["Image"],
                         PropertyAliases         = ["altText"],
+                        PropertyEditorUiAliases = ["Umb.PropertyEditorUi.TextBox"]
+                    },
+                    new AIPromptScopeRule
+                    {
+                        ContentTypeAliases      = ["testArticle"],
+                        PropertyAliases         = ["imageAlt"],
                         PropertyEditorUiAliases = ["Umb.PropertyEditorUi.TextBox"]
                     }
                 ]
@@ -384,7 +387,7 @@ public sealed class AiSeedDataHandler(
                     "You are a content assistant for this Umbraco test site. " +
                     "Help editors write and edit content that is clear, professional and well-structured. " +
                     "When referring to a content node, always provide a direct backoffice link using the " +
-                    "Umbraco 17 format: https://localhost:44356/umbraco/section/content/workspace/document/edit/{nodeKey}/en-US/ " +
+                    "Umbraco 17 format: https://localhost:44392/umbraco/section/content/workspace/document/edit/{nodeKey}/en-US/ " +
                     "Use the nodeKey (GUID) returned by get_umbraco_content. " +
                     "Do NOT use the old #/content/content/edit/ format.",
                 AllowedToolScopeIds = allToolScopeIds
@@ -469,7 +472,7 @@ public sealed class AiSeedDataHandler(
                     "  Do not attempt to set these — they will fail.\n" +
                     "- Never save or publish without the editor saying 'save' or 'publish'.\n" +
                     "- Backoffice links use this format: " +
-                    "  https://localhost:44356/umbraco/section/content/workspace/document/edit/{nodeKey}/en-US/\n\n" +
+                    "  https://localhost:44392/umbraco/section/content/workspace/document/edit/{nodeKey}/en-US/\n\n" +
                     "For external document import (Word, PDF, etc.):\n" +
                     "- Binary files cannot be read — ask the editor to paste the text into this chat.\n" +
                     "- Public URLs can be fetched — ask for the URL and read the page.\n" +
@@ -479,56 +482,9 @@ public sealed class AiSeedDataHandler(
             IsActive = true
         }, ct);
 
-        // Translation assistant — full-page translation via Copilot sidebar
-        // Reads all text fields, translates them, and presents each field's
-        // translation labelled and ready for the editor to apply.
-        // Note: Umbraco.AI currently exposes read-only content tools (get_umbraco_content),
-        // so the agent presents the translation for manual application. The editor
-        // creates an unpublished copy, culture variant, or new node and pastes in
-        // the translated values. This is the correct workflow until write tools
-        // (create_umbraco_content) are available in Umbraco.AI.
-        await agentService.SaveAgentAsync(new AIAgent
-        {
-            Alias = "translation-assistant",
-            Name = "Translation Assistant",
-            Description = "Translates the current page into another language, field by field",
-            ProfileId = profile.Id,
-            SurfaceIds = ["copilot"],
-            Scope = new AIAgentScope
-            {
-                AllowRules = [new AIAgentScopeRule { Sections = ["content"] }]
-            },
-            Config = new AIStandardAgentConfig
-            {
-                ContextIds = [context.Id],
-                Instructions =
-                    "You are a translation assistant for this Umbraco site.\n\n" +
-                    "When an editor asks you to translate a page to another language:\n" +
-                    "1. Use get_umbraco_content to read the current page's fields (the current " +
-                    "   node key is available in the entity context).\n" +
-                    "2. Identify ALL human-readable text fields: titles, summaries, body text, " +
-                    "   descriptions, labels, button text. Skip metadata: URLs, GUIDs, dates, " +
-                    "   file sizes, technical identifiers.\n" +
-                    "3. Translate every identified field into the requested target language.\n" +
-                    "4. Present the results as a clearly labelled list:\n" +
-                    "   **Field name** (property alias)\n" +
-                    "   [translated content]\n" +
-                    "   — one section per field, in the same order as the original page.\n\n" +
-                    "Translation rules:\n" +
-                    "- Preserve all HTML tags and structure inside rich-text fields.\n" +
-                    "- Do not translate link hrefs, src attributes, or property aliases.\n" +
-                    "- If a field is already in the target language, note it and skip it.\n" +
-                    "- Maintain the original tone, register and formatting.\n\n" +
-                    "After presenting the translations, tell the editor:\n" +
-                    "- To apply them, create a new content node of the same document type " +
-                    "  and paste each translated field in, then save as unpublished for review.\n" +
-                    "- If the site uses Umbraco culture variants (multilingual), they can " +
-                    "  switch to the target culture on the same node and apply the translations there.\n" +
-                    "- Do NOT publish on the editor's behalf — always save as draft first.",
-                AllowedToolScopeIds = allToolScopeIds
-            },
-            IsActive = true
-        }, ct);
+        // Note: translation is handled by the "Translate to English..." backoffice action
+        // registered via wwwroot/App_Plugins/TranslationAction/umbraco-package.json.
+        // No Copilot translation agent is needed.
     }
 
     /// <summary>
@@ -572,18 +528,22 @@ public sealed class AiSeedDataHandler(
         // v1: incorrectly included MediaPicker → corrupted image slots.
         // v2: TextBox-only but no content-type or property-alias constraint
         //     → appeared on every TextBox in the backoffice (Title, Width, etc.).
-        // v3 (current): locked to ContentTypeAlias="Image", PropertyAlias="altText".
+        // v3: locked to ContentTypeAlias="Image", PropertyAlias="altText".
+        // v4 (current): two rules — Image/altText AND testArticle/imageAlt.
         var altText = await promptService.GetPromptByAliasAsync("generate-alt-text", ct);
         var altTextNeedsScope = altText is not null && (
             altText.Scope?.AllowRules?.Any(r =>
                 r.PropertyEditorUiAliases?.Contains("Umb.PropertyEditorUi.MediaPicker") == true) == true ||
             altText.Scope?.AllowRules?.Any(r =>
                 r.ContentTypeAliases?.Contains("Image") == true &&
-                r.PropertyAliases?.Contains("altText") == true) != true);
+                r.PropertyAliases?.Contains("altText") == true) != true ||
+            altText.Scope?.AllowRules?.Any(r =>
+                r.ContentTypeAliases?.Contains("testArticle") == true &&
+                r.PropertyAliases?.Contains("imageAlt") == true) != true);
 
         if (altTextNeedsScope)
         {
-            logger.LogInformation("[AI Seed] Patching generate-alt-text scope to Image/altText only…");
+            logger.LogInformation("[AI Seed] Patching generate-alt-text scope to Image/altText + testArticle/imageAlt…");
             altText!.Scope = new AIPromptScope
             {
                 AllowRules =
@@ -593,23 +553,16 @@ public sealed class AiSeedDataHandler(
                         ContentTypeAliases      = ["Image"],
                         PropertyAliases         = ["altText"],
                         PropertyEditorUiAliases = ["Umb.PropertyEditorUi.TextBox"]
+                    },
+                    new AIPromptScopeRule
+                    {
+                        ContentTypeAliases      = ["testArticle"],
+                        PropertyAliases         = ["imageAlt"],
+                        PropertyEditorUiAliases = ["Umb.PropertyEditorUi.TextBox"]
                     }
                 ]
             };
             await promptService.SavePromptAsync(altText, ct);
-        }
-
-        // ── Translation-assistant instructions patch ──────────────────────────
-        // Earlier instructions let Gemini refuse when the editor mentioned "create
-        // a new node". New instructions enforce "always translate first" behaviour.
-        const string translationGuard = "ALWAYS call get_umbraco_content immediately as your very first action";
-        var translationAgent = await agentService.GetAgentByAliasAsync("translation-assistant", ct);
-        if (translationAgent?.Config is AIStandardAgentConfig taCfg &&
-            !taCfg.Instructions.Contains(translationGuard))
-        {
-            logger.LogInformation("[AI Seed] Patching translation-assistant instructions…");
-            taCfg.Instructions = BuildTranslationInstructions();
-            await agentService.SaveAgentAsync(translationAgent, ct);
         }
 
         // ── Schema.org instructions patch ─────────────────────────────────────
@@ -647,6 +600,12 @@ public sealed class AiSeedDataHandler(
                     {
                         ContentTypeAliases      = ["Image"],
                         PropertyAliases         = ["altText"],
+                        PropertyEditorUiAliases = ["Umb.PropertyEditorUi.TextBox"]
+                    },
+                    new AIPromptScopeRule
+                    {
+                        ContentTypeAliases      = ["testArticle"],
+                        PropertyAliases         = ["imageAlt"],
                         PropertyEditorUiAliases = ["Umb.PropertyEditorUi.TextBox"]
                     }
                 ]
@@ -738,7 +697,7 @@ public sealed class AiSeedDataHandler(
             var stale = await promptService.GetPromptByAliasAsync(staleAlias, ct);
             if (stale is null) continue;
             logger.LogInformation("[AI Seed] Removing stale prompt '{Alias}'…", staleAlias);
-            await promptService.DeletePromptAsync(stale, ct);
+            await promptService.DeletePromptAsync(stale.Id, ct);
         }
 
         await EnsurePromptAsync("structure-document", ct, new AIPrompt
@@ -796,7 +755,7 @@ public sealed class AiSeedDataHandler(
                     "You are a content assistant for this Umbraco test site. " +
                     "Help editors write and edit content that is clear, professional and well-structured. " +
                     "When referring to a content node, always provide a direct backoffice link using the " +
-                    "Umbraco 17 format: https://localhost:44356/umbraco/section/content/workspace/document/edit/{nodeKey}/en-US/ " +
+                    "Umbraco 17 format: https://localhost:44392/umbraco/section/content/workspace/document/edit/{nodeKey}/en-US/ " +
                     "Use the nodeKey (GUID) returned by get_umbraco_content. " +
                     "Do NOT use the old #/content/content/edit/ format.",
                 AllowedToolScopeIds = allToolScopeIds
@@ -872,7 +831,7 @@ public sealed class AiSeedDataHandler(
                     "  Do not attempt to set these — they will fail.\n" +
                     "- Never save or publish without the editor saying 'save' or 'publish'.\n" +
                     "- Backoffice links use this format: " +
-                    "  https://localhost:44356/umbraco/section/content/workspace/document/edit/{nodeKey}/en-US/\n\n" +
+                    "  https://localhost:44392/umbraco/section/content/workspace/document/edit/{nodeKey}/en-US/\n\n" +
                     "For external document import (Word, PDF, etc.):\n" +
                     "- Binary files cannot be read — ask the editor to paste the text into this chat.\n" +
                     "- Public URLs can be fetched — ask for the URL and read the page.\n" +
@@ -882,25 +841,16 @@ public sealed class AiSeedDataHandler(
             IsActive = true
         });
 
-        await EnsureAgentAsync("translation-assistant", ct, new AIAgent
+        // ── Stale agent cleanup ───────────────────────────────────────────────
+        // Translation is now handled by the backoffice entity action
+        // (App_Plugins/TranslationAction). Remove any previously seeded
+        // translation-assistant Copilot agent so it no longer appears in the sidebar.
+        var staleTranslationAgent = await agentService.GetAgentByAliasAsync("translation-assistant", ct);
+        if (staleTranslationAgent is not null)
         {
-            Alias = "translation-assistant",
-            Name = "Translation Assistant",
-            Description = "Translates the current page into another language, field by field",
-            ProfileId = profile.Id,
-            SurfaceIds = ["copilot"],
-            Scope = new AIAgentScope
-            {
-                AllowRules = [new AIAgentScopeRule { Sections = ["content"] }]
-            },
-            Config = new AIStandardAgentConfig
-            {
-                ContextIds = [context.Id],
-                Instructions = BuildTranslationInstructions(),
-                AllowedToolScopeIds = allToolScopeIds
-            },
-            IsActive = true
-        });
+            logger.LogInformation("[AI Seed] Removing stale translation-assistant Copilot agent…");
+            await agentService.DeleteAgentAsync(staleTranslationAgent.Id, ct);
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -938,42 +888,6 @@ public sealed class AiSeedDataHandler(
         logger.LogInformation("[AI Seed] Seeding agent '{Alias}'…", alias);
         await agentService.SaveAgentAsync(agent, ct);
     }
-
-    /// <summary>
-    /// Returns the instructions string for the translation-assistant agent.
-    /// Kept as a static helper so the runtime patch and the EnsureAgentAsync seed
-    /// call always share exactly the same text.
-    /// </summary>
-    private static string BuildTranslationInstructions() =>
-        // GUARD: "ALWAYS call get_umbraco_content immediately" is used by the runtime
-        // patch in EnsureNewItemsAsync to detect whether this version is installed.
-        "You are a translation assistant for this Umbraco site.\n\n" +
-        "ALWAYS call get_umbraco_content immediately as your very first action — " +
-        "regardless of whether the editor asks for a new node, a copy, a culture variant, " +
-        "or anything else. Do not ask for permission. Do not explain first. Just read.\n\n" +
-        "STEP 1 — Read the current page.\n" +
-        "Call get_umbraco_content with the entity key from the context.\n\n" +
-        "STEP 2 — Identify fields to translate.\n" +
-        "Translate every human-readable text field: title, headline, summary, " +
-        "body text, description, labels, button text.\n" +
-        "Skip: URLs, GUIDs, image paths, dates, file sizes, numbers, property aliases.\n" +
-        "For rich-text fields: translate only the visible text; preserve all HTML tags.\n\n" +
-        "STEP 3 — Translate everything to the requested language.\n" +
-        "Keep the original tone and register. " +
-        "If a field is already in the target language, note it briefly and skip it.\n\n" +
-        "STEP 4 — Tell the editor exactly what to do next.\n" +
-        "This site's content is authored in Danish (da-DK) and translated to English (en-US). " +
-        "Tell the editor to trigger the translation API to create the English draft automatically:\n\n" +
-        "POST https://localhost:44356/umbraco/api/testsite/translation/translate\n" +
-        "Body: { \"contentKey\": \"<nodeKey>\", \"sourceCulture\": \"da-DK\", \"targetCulture\": \"en-US\" }\n\n" +
-        "Replace <nodeKey> with the node's key (GUID) that you retrieved in STEP 1.\n" +
-        "The API queues the job and saves an English (en-US) draft variant automatically — unpublished, " +
-        "ready for editorial review.\n" +
-        "The editor can then open the node, switch to the English flag in the language selector, " +
-        "review the draft, and publish when satisfied.\n\n" +
-        "Also show a check-status URL: GET https://localhost:44356/umbraco/api/testsite/translation/status/<jobId>\n\n" +
-        "NEVER create content nodes. NEVER publish on the editor's behalf. " +
-        "NEVER ask the editor to provide translations — you translate, not them.";
 
     private static JsonElement ToJsonElement(object value)
     {
