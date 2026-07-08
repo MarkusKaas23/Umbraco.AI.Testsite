@@ -22,6 +22,16 @@ public sealed class AiSeedComposer : IComposer
     public void Compose(IUmbracoBuilder builder)
     {
         builder.AddLimboAiDefaultContexts();
+
+        // Opt in to the Limbo AI translation feature (from Limbo.Umbraco.AI package).
+        // Reuses the same Gemini key already set in user secrets for the AI connection.
+        // Set the key with: dotnet user-secrets set "LimboAiTestsite:Gemini:ApiKey" "YOUR-KEY"
+        builder.AddLimboAiTranslation(o => o.ApiKeyConfigPath = "LimboAiTestsite:Gemini:ApiKey");
+
+        // Opt in to the Limbo AI document import feature (from Limbo.Umbraco.AI package).
+        // Reuses the same Gemini API key — no separate configuration needed.
+        builder.AddLimboAiDocumentImport(o => o.ApiKeyConfigPath = "LimboAiTestsite:Gemini:ApiKey");
+
         builder.AddNotificationAsyncHandler<UmbracoApplicationStartedNotification, ContentBootstrapHandler>();
         builder.AddNotificationAsyncHandler<UmbracoApplicationStartedNotification, AiSeedDataHandler>();
     }
@@ -482,8 +492,8 @@ public sealed class AiSeedDataHandler(
             IsActive = true
         }, ct);
 
-        // Note: translation is handled by the "Translate to English..." backoffice action
-        // registered via wwwroot/App_Plugins/TranslationAction/umbraco-package.json.
+        // Note: translation is handled by the "Translate Node" workspace view tab
+        // registered by Limbo.Umbraco.AI via AddLimboAiTranslation() in AiSeedComposer.
         // No Copilot translation agent is needed.
     }
 
@@ -842,9 +852,9 @@ public sealed class AiSeedDataHandler(
         });
 
         // ── Stale agent cleanup ───────────────────────────────────────────────
-        // Translation is now handled by the backoffice entity action
-        // (App_Plugins/TranslationAction). Remove any previously seeded
-        // translation-assistant Copilot agent so it no longer appears in the sidebar.
+        // Translation is now handled by the "Translate Node" workspace view tab
+        // provided by the Limbo.Umbraco.AI package (AddLimboAiTranslation).
+        // Remove any previously seeded translation-assistant Copilot agent.
         var staleTranslationAgent = await agentService.GetAgentByAliasAsync("translation-assistant", ct);
         if (staleTranslationAgent is not null)
         {
