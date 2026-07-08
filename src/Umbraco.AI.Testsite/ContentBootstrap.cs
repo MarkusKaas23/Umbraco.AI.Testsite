@@ -123,7 +123,7 @@ public sealed class ContentBootstrapHandler(
     /// <summary>
     /// Ensures all translation target languages are registered in Umbraco.
     /// en-US is typically present by default; de-DE / fr-FR / es-ES are added if missing.
-    /// These must exist before <see cref="TranslationWorker"/> can write culture variants.
+    /// These must exist before Limbo.Umbraco.AI.Translation.TranslationWorker can write culture variants.
     /// </summary>
     private async Task EnsureTargetLanguagesAsync()
     {
